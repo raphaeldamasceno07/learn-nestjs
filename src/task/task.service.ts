@@ -8,4 +8,11 @@ export class TaskService {
     this.tasks.push(task);
     console.log(task);
   }
+
+  findById(id: string): TaskDto {
+    const foundTask = this.tasks.filter((t) => t.id === id);
+    if (foundTask.length) {
+      return foundTask[0];
+    }
+  }
 }
