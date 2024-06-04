@@ -6,10 +6,10 @@ import { AuthService } from './auth.service';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
   @Post('login')
-  signIn(
+  async signIn(
     @Body('username') username: string,
     @Body('password') password: string,
-  ): AuthResponseDto {
-    return this.authService.signIn(username, password);
+  ): Promise<AuthResponseDto> {
+    return await this.authService.signIn(username, password);
   }
 }
