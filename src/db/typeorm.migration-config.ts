@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import { DataSource, DataSourceOptions } from 'typeorm';
 import { TaskEntity } from './entities/task.entity';
 import { UserEntity } from './entities/user.entity';
+import path from 'path';
 
 config();
 
@@ -15,8 +16,8 @@ const dataSourceOptions: DataSourceOptions = {
   username: configService.get<string>('DB_USERNAME'),
   password: configService.get<string>('DB_PASSWORD'),
   database: configService.get<string>('DB_NAME'),
-  entities: [TaskEntity, UserEntity],
-  migrations: [__dirname + '/migrations/**.ts'],
+  entities: [__dirname + '/entities/**.{js,ts}'],
+  migrations: [__dirname + '/migrations/**.{js,ts}'],
   synchronize: false,
 };
 

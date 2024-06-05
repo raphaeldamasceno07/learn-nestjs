@@ -1,67 +1,112 @@
-import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { TaskEntity } from 'src/db/entities/task.entity';
+import { Repository } from 'typeorm';
+import { UserEntity } from 'src/db/entities/user.entity';
 import { FindAllParameters, TaskDto, TaskStatusEnum } from './task.dto';
-import { v4 as uuid } from 'uuid';
 
 @Injectable()
 export class TaskService {
-  private tasks: TaskDto[] = [];
+  constructor(
+    @InjectRepository(TaskEntity)
+    private readonly taskRepository: Repository<TaskEntity>,
+  ) {}
 
-  create(task: TaskDto) {
-    task.id = uuid();
-    task.status = TaskStatusEnum.TO_DO;
-    this.tasks.push(task);
+  async create(task: TaskDto) {
+    const taskToSave: TaskEntity = {
+      title: task.title,
+      description: task.description,
+      expirationDate: task.expirationDate,
+      status: TaskStatusEnum.TO_DO,
+      userId: '',
+      user: new UserEntity
+    };
+
+    const createdTask = await this.taskRepository.save(taskToSave);
+
+    console.log(createdTask);
+
+    const newTask = this.mapEntityToDo(createdTask);
+
+    console.log(newTask.status);
+
+    return newTask;
   }
 
-  findById(id: string): TaskDto {
-    const foundTask = this.tasks.filter((t) => t.id === id);
-    if (foundTask.length) {
-      return foundTask[0];
-    }
-    throw new HttpException(
-      `Task with id ${id} not found`,
-      HttpStatus.NOT_FOUND,
-    );
-  }
+  async findById(id: string): Promise<TaskDto> {
+    const foundTask = await this.taskRepository.findOne({ where: { id } });
 
-  findAll(params: FindAllParameters): TaskDto[] {
-    return this.tasks.filter((t) => {
-      let match = true;
-
-      if (params.title != undefined && !t.title.includes(params.title)) {
-        match = false;
-      }
-
-      if (params.status != undefined && t.status !== params.status) {
-        match = false;
-      }
-
-      return match;
-    });
-  }
-
-  update(taskId: string, updatedTask: TaskDto) {
-    const taskIndex = this.tasks.findIndex((t) => t.id === taskId);
-    if (taskIndex >= 0) {
-      this.tasks[taskIndex] = updatedTask;
-      return;
+    if (!foundTask) {
+      throw new NotFoundException(`Task with id ${id} not found`);
     }
 
-    throw new HttpException(
-      `Task with id ${taskId} does not exist`,
-      HttpStatus.NOT_FOUND,
-    );
+    return this.mapEntityToDo(foundTask);
   }
 
-  delete(id: string) {
-    const deleteTask = this.tasks.findIndex((t) => t.id === id);
+  async findAll(params: FindAllParameters): Promise<TaskDto[]> {
+    const queryBuilder = this.taskRepository.createQueryBuilder('task');
 
-    if (deleteTask >= 0) {
-      this.tasks.splice(deleteTask, 1);
-      return;
+    if (params.title) {
+      const trimmedTitle = params.title.trim().toLowerCase();
+      queryBuilder.andWhere('LOWER(TRIM(task.title)) LIKE :title', {
+        title: `%${trimmedTitle}%`,
+      });
     }
-    throw new HttpException(
-      `Task with id ${id} not found`,
-      HttpStatus.BAD_REQUEST,
+
+    if (params.status) {
+      const trimmedStatus = params.status.trim().toLowerCase();
+      queryBuilder.andWhere('LOWER(TRIM(task.status::text)) LIKE :status', {
+        status: `%${trimmedStatus}%`,
+      });
+    }
+
+    const tasksfound = await queryBuilder.getMany();
+
+    const allTasks = tasksfound.map((taskEntity) =>
+      this.mapEntityToDo(taskEntity),
     );
+
+    return allTasks;
+  }
+
+  async update(id: string, updateTask: TaskDto) {
+    const foundTask = await this.taskRepository.findOne({ where: { id } });
+
+    if (!foundTask) {
+      throw new NotFoundException(`Task with id ${id} does not exist`);
+    }
+
+    await this.taskRepository.update(id, this.mapDtoToEntity(updateTask));
+  }
+
+  async delete(id: string) {
+    const result = await this.taskRepository.delete(id);
+
+    if (!result.affected) {
+      throw new BadRequestException(`Task with id ${id} not found`);
+    }
+  }
+
+  private mapEntityToDo(taskEntity: TaskEntity): TaskDto {
+    return {
+      id: taskEntity.id,
+      title: taskEntity.title,
+      description: taskEntity.description,
+      expirationDate: taskEntity.expirationDate,
+      status: taskEntity.status,
+    };
+  }
+
+  private mapDtoToEntity(taskDto: TaskDto): Partial<TaskEntity> {
+    return {
+      title: taskDto.title,
+      description: taskDto.description,
+      expirationDate: taskDto.expirationDate,
+      status: taskDto.status.toString(),
+    };
   }
 }
