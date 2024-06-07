@@ -1,19 +1,19 @@
 import { ConflictException, Injectable } from '@nestjs/common';
-import { UserDto } from './user.dto';
+import { CreateUserResponse, UserDto } from './user.dto';
 import { hashSync as bcryptHashSync } from 'bcrypt';
-import { InjectRepository } from '@nestjs/typeorm';
-import { UserEntity } from 'src/db/entities/user.entity';
 import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { UserEntity } from 'db/entities/user.entity';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(UserEntity)
-    private readonly usersRepository: Repository<UserEntity>,
+    private usersRepository: Repository<UserEntity>,
   ) {}
 
-  async createUser(newUser: UserDto) {
-    const userAlreadyRegistered = await this.findByUsername(newUser.username);
+  async create(newUser: UserDto): Promise<CreateUserResponse> {
+    const userAlreadyRegistered = await this.findByUserName(newUser.username);
 
     if (userAlreadyRegistered) {
       throw new ConflictException(
@@ -26,11 +26,10 @@ export class UsersService {
     dbUser.passwordHash = bcryptHashSync(newUser.password, 10);
 
     const { id, username } = await this.usersRepository.save(dbUser);
-
     return { id, username };
   }
 
-  async findByUsername(username: string): Promise<UserDto | null> {
+  async findByUserName(username: string): Promise<UserDto | null> {
     const userFound = await this.usersRepository.findOne({
       where: { username },
     });

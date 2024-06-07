@@ -1,104 +1,94 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { TaskEntity } from 'src/db/entities/task.entity';
-import { Repository } from 'typeorm';
-import { UserEntity } from 'src/db/entities/user.entity';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { FindAllParameters, TaskDto, TaskStatusEnum } from './task.dto';
+import { FindOptionsWhere, Like, Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { TaskEntity } from 'db/entities/task.entity';
 
 @Injectable()
 export class TaskService {
+
   constructor(
     @InjectRepository(TaskEntity)
-    private readonly taskRepository: Repository<TaskEntity>,
-  ) {}
+    private taskRepository: Repository<TaskEntity>,
+  ) { }
 
-  async create(task: TaskDto) {
+  async create(task: TaskDto): Promise<TaskDto> {
     const taskToSave: TaskEntity = {
       title: task.title,
       description: task.description,
       expirationDate: task.expirationDate,
-      status: TaskStatusEnum.TO_DO,
-      userId: '',
-      user: new UserEntity
-    };
+      status: TaskStatusEnum.TO_DO
+    }
 
     const createdTask = await this.taskRepository.save(taskToSave);
-
-    console.log(createdTask);
-
-    const newTask = this.mapEntityToDo(createdTask);
-
-    console.log(newTask.status);
-
-    return newTask;
+    return this.mapEntityToDto(createdTask);
   }
 
   async findById(id: string): Promise<TaskDto> {
-    const foundTask = await this.taskRepository.findOne({ where: { id } });
+    const foundTask = await this.taskRepository.findOne({ where: { id } })
 
     if (!foundTask) {
-      throw new NotFoundException(`Task with id ${id} not found`);
+      throw new HttpException(
+        `Task with id ${id} not found`,
+        HttpStatus.NOT_FOUND,
+      );
     }
 
-    return this.mapEntityToDo(foundTask);
+    return this.mapEntityToDto(foundTask);
   }
 
   async findAll(params: FindAllParameters): Promise<TaskDto[]> {
-    const queryBuilder = this.taskRepository.createQueryBuilder('task');
+    const searchPrams: FindOptionsWhere<TaskEntity> = {}
 
     if (params.title) {
-      const trimmedTitle = params.title.trim().toLowerCase();
-      queryBuilder.andWhere('LOWER(TRIM(task.title)) LIKE :title', {
-        title: `%${trimmedTitle}%`,
-      });
+      searchPrams.title = Like(`%${params.title}%`);
     }
 
     if (params.status) {
-      const trimmedStatus = params.status.trim().toLowerCase();
-      queryBuilder.andWhere('LOWER(TRIM(task.status::text)) LIKE :status', {
-        status: `%${trimmedStatus}%`,
-      });
+      searchPrams.status = Like(`%${params.status}%`);
     }
 
-    const tasksfound = await queryBuilder.getMany();
+    const tasksFound = await this.taskRepository.find({
+      where: searchPrams
+    });
 
-    const allTasks = tasksfound.map((taskEntity) =>
-      this.mapEntityToDo(taskEntity),
-    );
 
-    return allTasks;
+    return tasksFound.map(taskEntity => this.mapEntityToDto(taskEntity));
   }
 
-  async update(id: string, updateTask: TaskDto) {
-    const foundTask = await this.taskRepository.findOne({ where: { id } });
+  async update(id: string, task: TaskDto) {
+    const foundTask = await this.taskRepository.findOne({ where: { id } })
 
     if (!foundTask) {
-      throw new NotFoundException(`Task with id ${id} does not exist`);
+      throw new HttpException(
+        `Task with id '${id}' not found`,
+        HttpStatus.BAD_REQUEST,
+      );
     }
 
-    await this.taskRepository.update(id, this.mapDtoToEntity(updateTask));
+    await this.taskRepository.update(id, this.mapDtoToEntity(task));
   }
 
-  async delete(id: string) {
-    const result = await this.taskRepository.delete(id);
+  async remove(id: string) {
+
+    const result = await this.taskRepository.delete(id)
 
     if (!result.affected) {
-      throw new BadRequestException(`Task with id ${id} not found`);
+      throw new HttpException(
+        `Task with id '${id}' not found`,
+        HttpStatus.BAD_REQUEST,
+      );
     }
   }
 
-  private mapEntityToDo(taskEntity: TaskEntity): TaskDto {
+  private mapEntityToDto(taskEntity: TaskEntity): TaskDto {
     return {
       id: taskEntity.id,
       title: taskEntity.title,
       description: taskEntity.description,
       expirationDate: taskEntity.expirationDate,
-      status: taskEntity.status,
-    };
+      status: TaskStatusEnum[taskEntity.status]
+    }
   }
 
   private mapDtoToEntity(taskDto: TaskDto): Partial<TaskEntity> {
@@ -106,7 +96,7 @@ export class TaskService {
       title: taskDto.title,
       description: taskDto.description,
       expirationDate: taskDto.expirationDate,
-      status: taskDto.status.toString(),
-    };
+      status: taskDto.status.toString()
+    }
   }
 }
